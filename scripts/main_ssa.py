@@ -34,9 +34,12 @@ def main(rank, args):
         args.ckpt_path = 'ckp/sam_vit_h_4b8939.pth'
         model = sam_model_registry["vit_h"](checkpoint=args.ckpt_path).to(rank)
     elif args.sam_type == 'sam2':
-        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-        args.ckpt_path = 'ckp/sam_vit_h_4b8939.pth'
-        model = sam_model_registry["vit_h"](checkpoint=args.ckpt_path).to(rank)
+        from sam2.build_sam import build_sam2
+        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator as SamAutomaticMaskGenerator
+        checkpoint = "ckp/sam2_hiera_tiny.pt"
+        model_cfg = "sam2_hiera_t.yaml"
+        model = build_sam2(model_cfg, checkpoint).to(rank)
+        
     elif args.sam_type == 'mobile_sam':
         from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
         args.ckpt_path = '/home/chenx2/MobileSAM/weights/mobile_sam.pt'
@@ -44,13 +47,6 @@ def main(rank, args):
 
     mask_branch_model = SamAutomaticMaskGenerator(
         model=model,
-        # points_per_side=128 if args.dataset == 'foggy_driving' else 64,
-        # # Foggy driving (zero-shot evaluate) is more challenging than other dataset, so we use a larger points_per_side
-        # pred_iou_thresh=0.86,
-        # stability_score_thresh=0.92,
-        # crop_n_layers=1,
-        # crop_n_points_downscale_factor=2,
-        # min_mask_region_area=100,  # Requires open-cv to run post-processing
         output_mode='coco_rle',
     )
     print(f"[Model loaded] Mask branch ({args.sam_type}) is loaded.")

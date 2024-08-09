@@ -4,6 +4,8 @@
 > Jiaqi Chen, Zeyu Yang, and Li Zhang  
 > Zhang Vision Group, Fudan Univerisity
 
+## Segment branch support SAM, MobileSAM, and SAM2.
+
 ### 👍 What SSA project can do?
 - **SSA:** This is the first open framework that utilizes SAM for semantic segmentation task. It supports users to seamlessly integrate their existing semantic segmenters with SAM without the need for retraining or fine-tuning SAM's weights, enabling them to achieve better generalization and more precise mask boundaries.  
 
