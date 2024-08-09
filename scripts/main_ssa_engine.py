@@ -16,12 +16,12 @@ os.environ['MASTER_PORT'] = '12355'
 def parse_args():
     parser = argparse.ArgumentParser(description='Semantically segment anything.')
     parser.add_argument('--data_dir', help='specify the root path of images and masks')
-    parser.add_argument('--out_dir', help='the dir to save semantic annotations')
-    parser.add_argument('--save_img', default=False, action='store_true', help='whether to save annotated images')
+    parser.add_argument('--out_dir', default='outs', help='the dir to save semantic annotations')
+    parser.add_argument('--save_img', default=True, action='store_true', help='whether to save annotated images')
     parser.add_argument('--world_size', type=int, default=0, help='number of nodes')
     parser.add_argument('--sam', default=False, action='store_true', help='use SAM but not given annotation json, default is False')
     parser.add_argument('--ckpt_path', default='ckp/sam_vit_h_4b8939.pth', help='specify the root path of SAM checkpoint')
-    parser.add_argument('--light_mode', default=False, action='store_true', help='use light mode')
+    parser.add_argument('--light_mode', default=True, action='store_true', help='use light mode')
     args = parser.parse_args()
     return args
 
@@ -92,6 +92,10 @@ def main(rank, args):
     else:
         mask_generator = None
         filenames = [fn_[:-5] for fn_ in os.listdir(args.data_dir) if '.json' in fn_]  # if sam is not used, the filenames are the same as the json files
+    
+    print("INIT FINISH")
+    
+    
     if rank==0:
         print('Total number of files: ', len(filenames))
     local_filenames = filenames[(len(filenames) // args.world_size + 1) * rank : (len(filenames) // args.world_size + 1) * (rank + 1)]

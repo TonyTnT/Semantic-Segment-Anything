@@ -1,9 +1,8 @@
 import os
 import argparse
 import torch
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
-from pipeline import semantic_segment_anything_inference, eval_pipeline, img_load
+from pipeline import semantic_segment_anything_inference, img_load
 from configs.ade20k_id2label import CONFIG as CONFIG_ADE20K_ID2LABEL
 from configs.cityscapes_id2label import CONFIG as CONFIG_CITYSCAPES_ID2LABEL
 
@@ -15,9 +14,10 @@ os.environ['MASTER_PORT'] = '12322'
 def parse_args():
     parser = argparse.ArgumentParser(description='Semantically segment anything.')
     parser.add_argument('--data_dir', help='specify the root path of images and masks')
-    parser.add_argument('--ckpt_path', default='ckp/sam_vit_h_4b8939.pth', help='specify the root path of SAM checkpoint')
-    parser.add_argument('--out_dir', help='the dir to save semantic annotations')
-    parser.add_argument('--save_img', default=False, action='store_true', help='whether to save annotated images')
+    parser.add_argument('--sam_type', help='Support sam and mobile_sam')
+    # parser.add_argument('--ckpt_path', default='ckp/sam_vit_h_4b8939.pth', help='specify the root path of SAM checkpoint')
+    parser.add_argument('--out_dir', default='outs', help='the dir to save semantic annotations')
+    parser.add_argument('--save_img', default=True, action='store_true', help='whether to save annotated images')
     parser.add_argument('--world_size', type=int, default=0, help='number of nodes')
     parser.add_argument('--dataset', type=str, default='ade20k', choices=['ade20k', 'cityscapes', 'foggy_driving'], help='specify the set of class names')
     parser.add_argument('--eval', default=False, action='store_true', help='whether to execute evalution')
@@ -28,21 +28,32 @@ def parse_args():
     
 def main(rank, args):
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
-    
-    sam = sam_model_registry["vit_h"](checkpoint=args.ckpt_path).to(rank)
+
+    if args.sam_type == 'sam':
+        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+        args.ckpt_path = 'ckp/sam_vit_h_4b8939.pth'
+        model = sam_model_registry["vit_h"](checkpoint=args.ckpt_path).to(rank)
+    elif args.sam_type == 'sam2':
+        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+        args.ckpt_path = 'ckp/sam_vit_h_4b8939.pth'
+        model = sam_model_registry["vit_h"](checkpoint=args.ckpt_path).to(rank)
+    elif args.sam_type == 'mobile_sam':
+        from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+        args.ckpt_path = '/home/chenx2/MobileSAM/weights/mobile_sam.pt'
+        model = sam_model_registry["vit_t"](checkpoint=args.ckpt_path).to(rank)
 
     mask_branch_model = SamAutomaticMaskGenerator(
-        model=sam,
-        points_per_side=128 if args.dataset == 'foggy_driving' else 64,
-        # Foggy driving (zero-shot evaluate) is more challenging than other dataset, so we use a larger points_per_side
-        pred_iou_thresh=0.86,
-        stability_score_thresh=0.92,
-        crop_n_layers=1,
-        crop_n_points_downscale_factor=2,
-        min_mask_region_area=100,  # Requires open-cv to run post-processing
+        model=model,
+        # points_per_side=128 if args.dataset == 'foggy_driving' else 64,
+        # # Foggy driving (zero-shot evaluate) is more challenging than other dataset, so we use a larger points_per_side
+        # pred_iou_thresh=0.86,
+        # stability_score_thresh=0.92,
+        # crop_n_layers=1,
+        # crop_n_points_downscale_factor=2,
+        # min_mask_region_area=100,  # Requires open-cv to run post-processing
         output_mode='coco_rle',
     )
-    print('[Model loaded] Mask branch (SAM) is loaded.')
+    print(f"[Model loaded] Mask branch ({args.sam_type}) is loaded.")
     # yoo can add your own semantic branch here, and modify the following code
     if args.model == 'oneformer':
         from transformers import OneFormerProcessor, OneFormerForUniversalSegmentation
@@ -80,7 +91,7 @@ def main(rank, args):
         raise NotImplementedError()
     print('[Model loaded] Semantic branch (your own segmentor) is loaded.')
     if args.dataset == 'ade20k':
-        filenames = [fn_.replace('.jpg', '') for fn_ in os.listdir(args.data_dir) if '.jpg' in fn_]
+        filenames = [fn_ for fn_ in os.listdir(args.data_dir) if '.jpg' in fn_ or '.png' in fn_]
     elif args.dataset == 'cityscapes' or args.dataset == 'foggy_driving':
         sub_folders = [fn_ for fn_ in os.listdir(args.data_dir) if os.path.isdir(os.path.join(args.data_dir, fn_))]
         filenames = []
@@ -108,9 +119,8 @@ def main(rank, args):
                                    id2label=id2label,
                                    model=args.model)
         # torch.cuda.empty_cache()
-    if args.eval and rank==0:
-        assert args.gt_path is not None
-        eval_pipeline(args.gt_path, args.out_dir, args.dataset)
+
+
 
 if __name__ == '__main__':
     args = parse_args()

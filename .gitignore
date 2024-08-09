@@ -113,3 +113,5 @@ output/
 output*
 bkup/
 ckp/
+outs/*
+scripts/configs/__pycache__/*

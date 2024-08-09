@@ -3,10 +3,10 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 import mmcv
+import mmengine
 from tqdm import tqdm
-from mmcv.utils import print_log
-from mmdet.core.visualization.image import imshow_det_bboxes
-from mmseg.core import intersect_and_union, pre_eval_to_metrics
+from mmengine import print_log
+from utils import imshow_det_bboxes
 from collections import OrderedDict
 from prettytable import PrettyTable
 import numpy as np
@@ -120,7 +120,7 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
         del mask_categories
         del class_ids_patch_huge
         
-    mmcv.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
+    mmengine.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
     print('[Save] save SSA-engine annotation results: ', os.path.join(output_path, filename + '_semantic.json'))
     if save_img:
         for ann in anns['annotations']:
@@ -143,7 +143,7 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
 def img_load(data_path, filename, dataset):
     # load image
     if dataset == 'ade20k':
-        img = mmcv.imread(os.path.join(data_path, filename+'.jpg'))
+        img = mmcv.imread(os.path.join(data_path, filename))
     elif dataset == 'cityscapes' or dataset == 'foggy_driving':
         img = mmcv.imread(os.path.join(data_path, filename+'.png'))
     else:
@@ -158,7 +158,12 @@ def semantic_segment_anything_inference(filename, output_path, rank, img=None, s
                                  id2label=None,
                                  model='segformer'):
 
+
+    import time
+    st = time.time()
     anns = {'annotations': mask_branch_model.generate(img)}
+    ed = time.time()
+    print(f"Running time: {ed - st} seconds")
     h, w, _ = img.shape
     class_names = []
     if model == 'oneformer':
@@ -221,7 +226,7 @@ def semantic_segment_anything_inference(filename, output_path, rank, img=None, s
                             show=False,
                             out_file=os.path.join(output_path, filename + '_semantic.png'))
         print('[Save] save SSA prediction: ', os.path.join(output_path, filename + '_semantic.png'))
-    mmcv.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
+    mmengine.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
     # 手动清理不再需要的变量
     del img
     del anns
@@ -234,88 +239,3 @@ def semantic_segment_anything_inference(filename, output_path, rank, img=None, s
 
     # gc.collect()
     
-def eval_pipeline(gt_path, res_path, dataset):
-    logger = None
-    if dataset == 'cityscapes' or dataset == 'foggy_driving':
-        class_names = ('road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic light', 'traffic sign', 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle')
-    elif dataset == 'ade20k':
-        class_names = ('wall', 'building', 'sky', 'floor', 'tree', 'ceiling', 'road', 'bed ', 'windowpane', 'grass', 'cabinet', 'sidewalk', 'person', 'earth', 'door', 'table', 'mountain', 'plant', 'curtain', 'chair', 'car', 'water', 'painting', 'sofa', 'shelf', 'house', 'sea', 'mirror', 'rug', 'field', 'armchair', 'seat', 'fence', 'desk', 'rock', 'wardrobe', 'lamp', 'bathtub', 'railing', 'cushion', 'base', 'box', 'column', 'signboard', 'chest of drawers', 'counter', 'sand', 'sink', 'skyscraper', 'fireplace', 'refrigerator', 'grandstand', 'path', 'stairs', 'runway', 'case', 'pool table', 'pillow', 'screen door', 'stairway', 'river', 'bridge', 'bookcase', 'blind', 'coffee table', 'toilet', 'flower', 'book', 'hill', 'bench', 'countertop', 'stove', 'palm', 'kitchen island', 'computer', 'swivel chair', 'boat', 'bar', 'arcade machine', 'hovel', 'bus', 'towel', 'light', 'truck', 'tower', 'chandelier', 'awning', 'streetlight', 'booth', 'television receiver', 'airplane', 'dirt track', 'apparel', 'pole', 'land', 'bannister', 'escalator', 'ottoman', 'bottle', 'buffet', 'poster', 'stage', 'van', 'ship', 'fountain', 'conveyer belt', 'canopy', 'washer', 'plaything', 'swimming pool', 'stool', 'barrel', 'basket', 'waterfall', 'tent', 'bag', 'minibike', 'cradle', 'oven', 'ball', 'food', 'step', 'tank', 'trade name', 'microwave', 'pot', 'animal', 'bicycle', 'lake', 'dishwasher', 'screen', 'blanket', 'sculpture', 'hood', 'sconce', 'vase', 'traffic light', 'tray', 'ashcan', 'fan', 'pier', 'crt screen', 'plate', 'monitor', 'bulletin board', 'shower', 'radiator', 'glass', 'clock', 'flag')
-    file_client = mmcv.FileClient(**{'backend': 'disk'})
-    pre_eval_results = []
-    if dataset == 'cityscapes':
-        prefixs = ['frankfurt','lindau','munster']
-    elif dataset == 'foggy_driving':
-        prefixs = ['public', 'pedestrian']
-    elif dataset == 'ade20k':
-        prefixs = ['']
-    else:
-        raise NotImplementedError
-    for split in tqdm(prefixs, desc="Split loop"):
-        gt_path_split = os.path.join(gt_path, split)
-        res_path_split = os.path.join(res_path, split)
-        filenames = [fn_ for fn_ in os.listdir(res_path_split) if '.json' in fn_]
-        for i, fn_ in enumerate(tqdm(filenames, desc="File loop")):
-            pred_fn = os.path.join(res_path_split, fn_)
-            result = mmcv.load(pred_fn)
-            num_classes = len(class_names)
-            init_flag = True
-            for id_str, mask in result['semantic_mask'].items():
-                mask_ = maskUtils.decode(mask)
-                h, w = mask_.shape
-                if init_flag:
-                    seg_mask = torch.zeros((1, 1, h, w))
-                    init_flag = False
-                mask_ = torch.from_numpy(mask_).unsqueeze(0).unsqueeze(0)
-                seg_mask[mask_] = int(id_str)
-            seg_logit = torch.zeros((1, num_classes, h, w))
-            seg_logit.scatter_(1, seg_mask.long(), 1)
-            seg_logit = seg_logit.float()
-            seg_pred = F.softmax(seg_logit, dim=1).argmax(dim=1).squeeze(0).numpy()
-            if dataset == 'cityscapes' or dataset == 'foggy_driving':
-                gt_fn_ = os.path.join(gt_path_split, fn_.replace('_leftImg8bit_semantic.json','_gtFine_labelTrainIds.png'))
-            elif dataset == 'ade20k':
-                gt_fn_ = os.path.join(gt_path, fn_.replace('_semantic.json','.png'))
-            img_bytes = file_client.get(gt_fn_)
-            seg_map = mmcv.imfrombytes(
-                img_bytes, flag='unchanged',
-                backend='pillow').squeeze().astype(np.uint8)
-            if dataset=='ade20k':
-                seg_map = seg_map - 1
-            pre_eval_results.append(intersect_and_union(
-                            seg_pred,
-                            seg_map,
-                            num_classes,
-                            255,
-                            label_map=dict(),
-                            reduce_zero_label=False))
-
-    ret_metrics = pre_eval_to_metrics(pre_eval_results, ['mIoU'])
-    ret_metrics_summary = OrderedDict({
-                ret_metric: np.round(np.nanmean(ret_metric_value) * 100, 2)
-                for ret_metric, ret_metric_value in ret_metrics.items()
-            })
-    # each class table
-    ret_metrics.pop('aAcc', None)
-    ret_metrics_class = OrderedDict({
-        ret_metric: np.round(ret_metric_value * 100, 2)
-        for ret_metric, ret_metric_value in ret_metrics.items()
-    })
-    ret_metrics_class.update({'Class': class_names})
-    ret_metrics_class.move_to_end('Class', last=False)
-
-    # for logger
-    class_table_data = PrettyTable()
-    for key, val in ret_metrics_class.items():
-        class_table_data.add_column(key, val)
-
-    summary_table_data = PrettyTable()
-    for key, val in ret_metrics_summary.items():
-        if key == 'aAcc':
-            summary_table_data.add_column(key, [val])
-        else:
-            summary_table_data.add_column('m' + key, [val])
-
-    print_log('per class results:', logger)
-    print_log('\n' + class_table_data.get_string(), logger=logger)
-    print_log('Summary:', logger)
-    print_log('\n' + summary_table_data.get_string(), logger=logger)
