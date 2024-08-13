@@ -263,6 +263,44 @@ def draw_masks(ax, img, masks, color=None, with_edge=True, alpha=0.8):
 
     return ax, img
 
+def draw_all_masks(masks, color=None, with_edge=True, alpha=0.8):
+    """Draw all masks on a single image.
+
+    Args:
+        masks (ndarray): The masks with the shape of (n, h, w).
+        color (ndarray): The colors for each mask with the shape
+            of (n, 3).
+        with_edge (bool): Whether to draw edges. Default: True.
+        alpha (float): Transparency of masks. Default: 0.8.
+
+    Returns:
+        ndarray: The result image.
+    """
+    height, width = masks.shape[1], masks.shape[2]
+    img = np.zeros((height, width, 3), dtype=np.uint8)
+
+    taken_colors = set([0, 0, 0])
+    if color is None:
+        color = np.array([np.max(mask) for mask in masks], dtype=np.uint8)
+
+    for i, mask in enumerate(masks):
+        if with_edge:
+            contours, _ = bitmap_to_polygon(mask)
+            for contour in contours:
+                cv2.drawContours(img, [contour], 0, (255, 255, 255), 1)
+
+        color_mask = color[i]
+        # while tuple(color_mask) in taken_colors:
+        #     color_mask = _get_bias_color(color_mask)
+        # taken_colors.add(tuple(color_mask))
+
+        mask = mask.astype(bool)
+        img[mask] = color_mask
+
+    return img
+
+
+
 
 def bitmap_to_polygon(bitmap):
     """Convert masks from the form of bitmaps to polygons.

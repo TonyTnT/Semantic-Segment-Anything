@@ -19,6 +19,9 @@
 <summary style="section-header">✈️ SSA: Semantic segment anything</summary>
 
 ![](./figures/SSA.png)
+
+![](./figures/seg_comp.png)
+
 Before the introduction of SAM, most semantic segmentation application scenarios already had their own models. These models could provide rough category classifications for regions, but were blurry and imprecise at the edges, lacking accurate masks. To address this issue, we propose an open framework called SSA that leverages SAM to enhance the performance of existing models. Specifically, the original semantic segmentation models provide category predictions while the powerful SAM provides masks.
 
 If you have already trained a semantic segmentation model on your dataset, you don't need to retrain a new SAM-based model for more accurate segmentation. Instead, you can continue to use the existing model as the Semantic branch. SAM's strong generalization and image segmentation abilities can improve the performance of the original model. It is worth noting that SSA is suitable for scenarios where the predicted mask boundaries by the original segmentor are not highly accurate. If the original model's segmentation is already very accurate, SSA may not provide a significant improvement.
@@ -141,10 +144,18 @@ cd segment-anything; pip install -e .; cd ../Semantic-Segment-Anything
 ```
 
 ## Run
-
+infer images under path of ./test/*
 ```bash
 python3 scripts/main_ssa.py --data_dir ./test/ --sam_type mobile_sam --world_size 1
 ```
+
+
+To provide a single image inference service using Flask, you can follow these steps:
+```
+python3 scripts/ssa.py --port 12185
+
+```
+
 
 
 <details>

@@ -217,6 +217,12 @@ def semantic_segment_anything_inference(filename, output_path, rank, img=None, s
         anns['semantic_mask'][str(sematic_class_in_img[i].item())]['counts'] = anns['semantic_mask'][str(sematic_class_in_img[i].item())]['counts'].decode('utf-8')
     
     if save_img:
+
+        semantic_mask_arr = semantc_mask.cpu().numpy().astype(np.uint8)
+        unique_values, counts = np.unique(semantic_mask_arr, return_counts=True)
+        import cv2
+        cv2.imwrite(os.path.join(output_path, filename + '_semantic_id.png'), semantic_mask_arr)
+
         imshow_det_bboxes(img,
                             bboxes=None,
                             labels=np.arange(len(sematic_class_in_img)),

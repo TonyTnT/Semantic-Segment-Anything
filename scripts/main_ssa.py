@@ -36,8 +36,10 @@ def main(rank, args):
     elif args.sam_type == 'sam2':
         from sam2.build_sam import build_sam2
         from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator as SamAutomaticMaskGenerator
-        checkpoint = "ckp/sam2_hiera_tiny.pt"
-        model_cfg = "sam2_hiera_t.yaml"
+        # checkpoint = "ckp/sam2_hiera_tiny.pt"
+        # model_cfg = "sam2_hiera_t.yaml"
+        checkpoint = "ckp/sam2_hiera_large.pt"
+        model_cfg = "sam2_hiera_l.yaml"
         model = build_sam2(model_cfg, checkpoint).to(rank)
         
     elif args.sam_type == 'mobile_sam':
@@ -48,6 +50,16 @@ def main(rank, args):
     mask_branch_model = SamAutomaticMaskGenerator(
         model=model,
         output_mode='coco_rle',
+        # points_per_side=32,
+        # points_per_batch=64,
+        # pred_iou_thresh=0.88,
+        # stability_score_thresh=0.95,
+        # stability_score_offset=1.0,
+        # box_nms_thresh=0.7,
+        # crop_n_layers=1,
+        crop_n_points_downscale_factor=2,
+        # point_grids=None,
+        # min_mask_region_area=100,
     )
     print(f"[Model loaded] Mask branch ({args.sam_type}) is loaded.")
     # yoo can add your own semantic branch here, and modify the following code
