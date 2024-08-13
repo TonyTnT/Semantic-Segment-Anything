@@ -9,6 +9,7 @@ import time
 import pycocotools.mask as maskUtils
 from segformer import segformer_segmentation as segformer_func
 from configs.ade20k_id2label import CONFIG as CONFIG_ADE20K_ID2LABEL
+from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmentation
 
 from server_wrapper import (
     ServerMixin,
@@ -16,6 +17,7 @@ from server_wrapper import (
     host_model,
     send_request,
     str_to_image,
+    uint8_arr_to_str
 )
 
 # try:
@@ -33,7 +35,7 @@ class SSA:
         if device is None:
             device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         self.device = device
-
+        self.model_name = model_name
             
         try:
             if model_name == 'sam':
@@ -65,7 +67,6 @@ class SSA:
             crop_n_points_downscale_factor=2
         )
         
-        from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmentation
         self.semantic_branch_processor = SegformerFeatureExtractor.from_pretrained(
             "nvidia/segformer-b5-finetuned-ade-640-640")
         self.semantic_branch_model = SegformerForSemanticSegmentation.from_pretrained(
@@ -102,7 +103,7 @@ class SSA:
         st = time.time()
         anns = {'annotations': mask_branch_model.generate(img)}
         ed = time.time()
-        print(f"Running time: {ed - st} seconds")
+        print(f"{self.model_name} infer : {(ed - st):.4f} seconds")
         h, w, _ = img.shape
         class_names = []
 
@@ -120,7 +121,6 @@ class SSA:
                 ann['class_name'] = id2label['id2label'][str(propose_classes_ids[0].item())]
                 ann['class_proposals'] = id2label['id2label'][str(propose_classes_ids[0].item())]
                 class_names.append(ann['class_name'])
-                # bitmasks.append(maskUtils.decode(ann['segmentation']))
                 continue
             top_1_propose_class_ids = torch.bincount(propose_classes_ids.flatten()).topk(1).indices
             top_1_propose_class_names = [id2label['id2label'][str(class_id.item())] for class_id in top_1_propose_class_ids]
@@ -136,7 +136,7 @@ class SSA:
             del num_class_proposals
             del top_1_propose_class_ids
             del top_1_propose_class_names
-        return semantc_mask.cpu().numpy()
+        return semantc_mask.cpu().numpy().astype(np.uint8)
 
 
 class SSAClient:
@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=12185)
-    parser.add_argument("--model_name", type=str, default="sam2")
+    parser.add_argument("--model_name", type=str, default="mobile_sam")
     args = parser.parse_args()
 
     print("Loading model...")
@@ -166,10 +166,10 @@ if __name__ == "__main__":
         def process_payload(self, payload: dict) -> dict:
             image = str_to_image(payload["image"])
             seg_mask = self.segment_bbox(image)
-            seg_mask_str = image_to_str(seg_mask)
+            seg_mask_str = uint8_arr_to_str(seg_mask)
             return {"seg_mask": seg_mask_str}
 
-    ssa = SSAServer(model_name="mobile_sam")
+    ssa = SSAServer(model_name=args.model_name)
     print("Model loaded!")
     print(f"Hosting on port {args.port}...")
     host_model(ssa, name="ssa", port=args.port)
